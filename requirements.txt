@@ -3,3 +3,4 @@ psutil
 pypresence
 yandex_music
 winsdk
+pyqt6
