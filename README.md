@@ -54,7 +54,6 @@ Discord RPC для показа музыки которую вы сейчас с
 >Код не идеален, т.к питон не мой постоянный язык и писался скрипт только для личного пользования, но он может стать основой для ваших скриптов.
 
 
->За основу был взят код [yandex-music-rpc](https://github.com/schwarzalexey/yandex-music-rpc/tree/main), а также [WinYandexMusicRPC
-Public](https://github.com/FozerG/WinYandexMusicRPC)
+>За основу был взят код [yandex-music-rpc](https://github.com/schwarzalexey/yandex-music-rpc/tree/main), а также [WinYandexMusicRPC](https://github.com/FozerG/WinYandexMusicRPC)
 
 >Используется [Yandex Music API](https://github.com/MarshalX/yandex-music-api)   
