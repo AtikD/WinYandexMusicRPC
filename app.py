@@ -1,9 +1,9 @@
-from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QApplication, QPushButton, QTextBrowser, QGroupBox, QMessageBox
+from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QApplication, QPushButton, QTextBrowser, QGroupBox, QMessageBox, QSystemTrayIcon, QCheckBox
 from winsdk.windows.media.control import GlobalSystemMediaTransportControlsSessionManager as MediaManager
 from itertools import permutations
 from yandex_music import Client
 from datetime import datetime
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QCloseEvent, QIcon
 from enum import Enum
 import configparser
 import pypresence
@@ -38,18 +38,23 @@ class WinYandexMusicRPC(QMainWindow):
         self.paused_time = 0
         self.name_prev = ""
         
-
         #for GUI
         super().__init__()
         self.logs = []
-        self.config = configparser.ConfigParser()
+        self.config:dict = configparser.ConfigParser()
         self.layout:QVBoxLayout = QVBoxLayout()
         self.widget:QWidget = QWidget()
-        self.button:QPushButton = QPushButton()
+        self.text = QTextBrowser()
+        self.mainbutton:QPushButton = QPushButton()
+        self.hidetotraybutton:QPushButton = QPushButton()
+        self.tray_icon:QSystemTrayIcon = QSystemTrayIcon()
+        self.exit_button:QPushButton = QPushButton()
+        self.check_box_strong_find:QCheckBox = QCheckBox()
 
+        self.get_files()
+        self.initialize_config()
         self.create_widgets()
         self.setWindowTitle("WinYandexMusicRPC")
-        self.initialize_config()
         self.get_last_version()
 
         self.widget.setLayout(self.layout)
@@ -57,9 +62,8 @@ class WinYandexMusicRPC(QMainWindow):
 
     def initialize_config(self):
         if not os.path.exists("config.ini"):
-            self.error("config.ini", "Не найден файл config.ini. Пожалуйста, скачайте его вместе с программой!")
+            self.error("config.ini", "The config.ini file was not found. Please restart the program!")
         self.config.read("config.ini")
-        self.config = self.config["INFO"]
 
     def error(self, title, msg):
         if not os.path.exists("config.ini"):
@@ -70,57 +74,108 @@ class WinYandexMusicRPC(QMainWindow):
                 buttons=QMessageBox.StandardButton.Close
             )
             if button:
-                exit()
+                sys.exit()
 
+    def get_files(self):
+        dlg = QMessageBox(self)
+        files = []
+        dlg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        dlg.setWindowTitle("WinYandexMusicRPC")
+        if not os.path.exists("config.ini"):
+            files.append("config.ini")
+        if not os.path.exists("icon.ico"):
+            files.append("icon.ico")
+
+        dlg.setText("The following files will be downloaded: " + ",".join(files))
+        if files:
+            button = dlg.exec()
+            if button == QMessageBox.StandardButton.Yes:
+                for i in files:
+                    r = requests.get("https://raw.githubusercontent.com/AtikD/WinYandexMusicRPC/main/"+i)
+                    with open(i, "wb") as f:
+                        f.write(r.content)
+                os.execv(sys.executable, ['python'] + sys.argv)
+            
     def create_widgets(self): 
+        #Вкладка "Логи"
         logs = QGroupBox("Logs")
         logsLayout = QVBoxLayout()
-        self.text = QTextBrowser()
         self.text.setMinimumSize(500,200)
         logsLayout.addWidget(self.text)
         logs.setLayout(logsLayout)
         self.layout.addWidget(logs)
-        
-        self.button.setText("Start")
-        self.button.clicked.connect(self.buttonClick)
-        self.button.setCheckable(True)
-        self.layout.addWidget(self.button)
+
+        #Вкладка "Настройки"
+        settings = QGroupBox("Settings")
+        settingsLayout = QVBoxLayout()
+            #strong_find
+        self.check_box_strong_find.setText("Strong_find")
+        if self.config.getboolean("INFO","strong_find"):
+            self.check_box_strong_find.setChecked(1)
+        self.check_box_strong_find.clicked.connect(self.strong_field_changed)
+        self.check_box_strong_find.setToolTip("Not recommended to disable")
+        self.check_box_strong_find.setStatusTip("test")
+        settingsLayout.addWidget(self.check_box_strong_find)
+        settings.setLayout(settingsLayout)
+        self.layout.addWidget(settings)
+        #Остальные кнопки
+        self.mainbutton.setText("Start")
+        self.mainbutton.clicked.connect(self.mainButtonClick)
+        self.mainbutton.setCheckable(True)
+        self.layout.addWidget(self.mainbutton)
+
+        self.hidetotraybutton.setText("Minimize to Tray")
+        self.hidetotraybutton.clicked.connect(self.hide)
+        self.layout.addWidget(self.hidetotraybutton)
+
+        self.exit_button.setText("Exit")
+        self.exit_button.clicked.connect(sys.exit)
+        self.layout.addWidget(self.exit_button)
+        #Настройка трея
+        self.tray_icon.setIcon(QIcon("icon.ico"))
+        self.tray_icon.activated.connect(self.show)
+        self.tray_icon.show()
     
     def addLineToLogs(self, line):
         now = datetime.now()
-        ctime = "[{}:{}:{}] ".format(now.hour, now.minute, now.second)
+        ctime = "[{:02}:{:02}:{:02}] ".format(now.hour, now.minute, now.second)
         self.logs.insert(0, ctime + line)
         self.text.setText("\n".join(self.logs))
-
+            
     def get_last_version(self):
         try:
-            response = requests.get(self.config["repo"] + "/releases/latest")
+            response = requests.get(self.config.get("INFO","repo") + "/releases/latest")
             response.raise_for_status()
             latest_version = response.url.split("/")[-1]
-            if self.config["version"] != latest_version:
-                self.addLineToLogs(f"A new version has been released on GitHub! You are using - {self.config["version"]}. A new version - {latest_version}")
+            if self.config.get("INFO","version") != latest_version:
+                self.addLineToLogs(f"A new version has been released on GitHub! You are using - {self.config.get("INFO","version")}. A new version - {latest_version}")
             else:
                 self.addLineToLogs("You are using the latest version of the script")
         except requests.exceptions.RequestException as e:
             self.addLineToLogs("Error getting latest version:", e)
 
-    def buttonClick(self, checked):
+    def strong_field_changed(self):
+        self.config.set("INFO", "strong_find", str(self.check_box_strong_find.isChecked()))
+        with open("config.ini", "w") as f:
+            self.config.write(f)
+
+    def mainButtonClick(self, checked):
         if checked:
             self.addLineToLogs("Starting...")
-            self.button.setText("Stop")
+            self.mainbutton.setText("Stop")
             self.start_rpc()
             return
         if not checked:
             self.addLineToLogs("Stoped!")
             self.running = False
-            self.button.setText("Start")
+            self.mainbutton.setText("Start")
             return
         
     def start_rpc(self):
         if not any(name in (p.name() for p in psutil.process_iter()) for name in self.exe_names):
             self.error("Discord not found","Discord is not launched!")
 
-        self.rpc = pypresence.Presence(self.config["client_id"])
+        self.rpc = pypresence.Presence(self.config.get("INFO","client_id"))
         self.rpc.connect()
         self.client = Client().init()
         self.running = True
@@ -191,11 +246,13 @@ class WinYandexMusicRPC(QMainWindow):
                 else:
                     self.paused_time = 0  # если трек продолжает играть, сбрасываем paused_time
             QtTest.QTest.qWait(3000)
-
-            
+      
     def getTrack(self) -> dict:
         try:
             current_media_info = asyncio.run(get_media_info())
+            if isinstance(current_media_info, str):
+                self.addLineToLogs(current_media_info)
+                return {"success": False}
             name_current = current_media_info["artist"] + " - " + current_media_info["title"]
             if str(name_current) != self.name_prev:
                 self.addLineToLogs(f"Now listening to \"{name_current}\"")
@@ -226,8 +283,7 @@ class WinYandexMusicRPC(QMainWindow):
                     findTrackNames.append(", ".join([str(elem) for elem in variant]) + " - " + trackFromSearch.title)
                 # Также может отличаться регистр, так что приведём всё в один регистр.    
                 boolNameCorrect = any(name_current.lower() == element.lower() for element in findTrackNames)
-
-                if self.config["strong_find"] and not boolNameCorrect: #если strong_find и название трека не совпадает, продолжаем поиск
+                if self.config.getboolean("INFO","strong_find") and not boolNameCorrect: #если strong_find и название трека не совпадает, продолжаем поиск
                     findTrackName = ", ".join([str(elem) for elem in trackFromSearch.artists_name()]) + " - " + trackFromSearch.title
                     debugStr.append(f"The result #{index} has the wrong title. Now play: {name_current}. But we find: {findTrackName}")
                     continue
@@ -261,7 +317,9 @@ class WinYandexMusicRPC(QMainWindow):
         except Exception as exception:
             self.addLineToLogs(f"Something happened: {exception}")
             return {"success": False}
-
+    
+    def closeEvent(self, a0: QCloseEvent | None) -> None:
+        sys.exit()
 # Асинхронная функция для получения информации о мультимедийном контенте через Windows SDK.
 async def get_media_info():
     sessions = await MediaManager.request_async()
